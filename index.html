@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Family Schedule</title>
+  <style>
+    :root {
+      --bg: #f7f4ef;
+      --card: #ffffff;
+      --ink: #26211d;
+      --soft: #6d625a;
+      --line: #e8e0d5;
+      --tile: #f2ece3;
+      --accent: #b5533c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+      font-size: 19px; line-height: 1.45;
+    }
+    main { max-width: 560px; margin: 0 auto; padding: 22px 16px 60px; }
+
+    .lang { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 16px; }
+    .lang button {
+      font: inherit; font-size: 17px; padding: 8px 16px; border-radius: 999px;
+      border: 2px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer;
+    }
+    .lang button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: #fff; }
+
+    h1 { font-size: 30px; line-height: 1.2; margin: 0 0 8px; }
+    .welcome { color: var(--soft); margin: 0 0 8px; }
+
+    .day { font-size: 20px; font-weight: 700; margin: 30px 4px 10px; }
+    .day small { display: block; font-size: 15px; font-weight: 600; color: var(--accent); }
+
+    .event { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 18px; margin-bottom: 12px; }
+    .top { display: grid; grid-template-columns: 72px 1fr; gap: 16px; align-items: center; }
+    .icon { width: 72px; height: 72px; border-radius: 18px; background: var(--tile); display: grid; place-items: center; font-size: 40px; }
+    .title { font-size: 23px; font-weight: 700; line-height: 1.2; }
+    .time { font-size: 20px; margin-top: 2px; }
+    .where { margin-top: 2px; color: var(--soft); }
+    .where a { color: var(--soft); text-underline-offset: 3px; }
+
+    .who { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+    .faces { display: flex; }
+    .face {
+      width: 40px; height: 40px; border-radius: 50%; border: 3px solid var(--card); margin-left: -8px;
+      display: grid; place-items: center; font-size: 16px; font-weight: 700; color: #fff;
+      background-size: cover; background-position: center;
+    }
+    .faces .face:first-child { margin-left: 0; }
+    .faces.small .face { width: 32px; height: 32px; font-size: 13px; }
+    .who-text { font-size: 17px; flex-basis: 100%; }
+    .who-text .with { color: var(--soft); }
+
+    .note { margin: 14px 0 0; }
+    .good { margin: 12px 0 0; padding: 12px 14px; background: var(--bg); border-radius: 14px; }
+    .good-label { font-size: 15px; font-weight: 700; color: var(--soft); margin-bottom: 4px; }
+    .good ul { margin: 0; padding-left: 1.1em; }
+    .good li { margin: 2px 0; }
+
+    .empty { text-align: center; color: var(--soft); padding: 40px 0; }
+    footer { text-align: center; color: var(--soft); font-size: 15px; margin-top: 36px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="lang" role="group" aria-label="Language">
+      <button data-lang="en">English</button>
+      <button data-lang="zh">繁體中文</button>
+    </div>
+    <h1 id="family-name"></h1>
+    <p class="welcome" id="welcome"></p>
+    <div id="events"></div>
+    <footer id="footer"></footer>
+  </main>
+
+  <script src="events.js"></script>
+  <script>
+    const WORDS = {
+      en: {
+        welcome: "Come if you can, no need to RSVP. We'd love to see you, and no hard feelings if you can't make it.",
+        empty: "Nothing coming up right now. Check back soon!",
+        footer: "Made with love for our village.",
+        good: "Good to know",
+        withParents: p => ` with ${p}`,
+        and: " & ",
+        today: "Today", tomorrow: "Tomorrow",
+        locale: "en-US",
+      },
+      zh: {
+        welcome: "有空就來，不用事先告訴我們。很期待見到你，來不了也完全沒關係。",
+        empty: "目前沒有活動，過幾天再來看看！",
+        footer: "獻給愛我們的家人和朋友。",
+        good: "小提醒",
+        withParents: p => `（${p}陪同）`,
+        and: "、",
+        today: "今天", tomorrow: "明天",
+        locale: "zh-Hant-TW",
+      },
+    };
+    const ICONS = { game: "⚽", recital: "🎹", beach: "🏖️", meal: "🥟", party: "🎉", school: "🏫", other: "📅" };
+    const FACE_TONES = ["#8a6f5c", "#5f7a8a", "#7c6a8e", "#6f8a68", "#9a6b6b", "#857a52"];
+
+    function savedLang() { try { return localStorage.getItem("lang"); } catch (e) { return null; } }
+    function saveLang(l) { try { localStorage.setItem("lang", l); } catch (e) {} }
+    function pickLang() {
+      const s = savedLang();
+      if (s && WORDS[s]) return s;
+      return (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
+    }
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    const ids = Object.keys(FAMILY.people);
+    function face(id) {
+      const p = FAMILY.people[id];
+      if (!p) return "";
+      const tone = FACE_TONES[ids.indexOf(id) % FACE_TONES.length];
+      const style = p.photo ? `background-image:url('${esc(p.photo)}')` : `background-color:${tone}`;
+      return `<span class="face" style="${style}" aria-hidden="true">${p.photo ? "" : esc(p.initials)}</span>`;
+    }
+    function names(list, lang) {
+      return list.map(id => FAMILY.people[id] ? FAMILY.people[id].name[lang] : id).join(WORDS[lang].and);
+    }
+    function at(date, hm) { return new Date(date + "T" + hm); }
+
+    function render(lang) {
+      const w = WORDS[lang];
+      document.documentElement.lang = lang === "zh" ? "zh-Hant" : "en";
+      document.querySelectorAll(".lang button").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === lang));
+      document.getElementById("family-name").textContent = FAMILY.name[lang];
+      document.title = FAMILY.name[lang];
+      document.getElementById("welcome").textContent = w.welcome;
+      document.getElementById("footer").textContent = w.footer;
+
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+      const upcoming = EVENTS
+        .map(e => ({ ...e, startAt: at(e.date, e.start), endAt: at(e.date, e.end || e.start) }))
+        .filter(e => e.endAt >= today)
+        .sort((a, b) => a.startAt - b.startAt);
+
+      const box = document.getElementById("events");
+      if (!upcoming.length) { box.innerHTML = `<p class="empty">${w.empty}</p>`; return; }
+
+      const dayFmt = new Intl.DateTimeFormat(w.locale, { weekday: "long", month: "long", day: "numeric" });
+      const timeFmt = new Intl.DateTimeFormat(w.locale, { hour: "numeric", minute: "2-digit" });
+
+      let html = "", lastDay = "";
+      for (const e of upcoming) {
+        const dayKey = e.date;
+        if (dayKey !== lastDay) {
+          const d = new Date(e.date + "T00:00");
+          const rel = +d === +today ? w.today : +d === +tomorrow ? w.tomorrow : "";
+          html += `<div class="day">${rel ? `<small>${rel}</small>` : ""}${dayFmt.format(d)}</div>`;
+          lastDay = dayKey;
+        }
+        const parents = e.parents || FAMILY.defaultParents || [];
+        const time = e.end ? `${timeFmt.format(e.startAt)} – ${timeFmt.format(e.endAt)}` : timeFmt.format(e.startAt);
+        const maps = "https://maps.google.com/?q=" + encodeURIComponent(e.place.search || e.place.name);
+        const tips = (e.tips && e.tips[lang]) || [];
+        html += `
+          <article class="event">
+            <div class="top">
+              <div class="icon" aria-hidden="true">${ICONS[e.type] || ICONS.other}</div>
+              <div>
+                <div class="title">${esc(e.title[lang])}</div>
+                <div class="time">${time}</div>
+                <div class="where"><a href="${maps}" target="_blank" rel="noopener">${esc(e.place.name)}</a></div>
+              </div>
+            </div>
+            <div class="who">
+              <span class="faces">${e.kids.map(face).join("")}</span>
+              ${parents.length ? `<span class="faces small">${parents.map(face).join("")}</span>` : ""}
+              <span class="who-text"><strong>${esc(names(e.kids, lang))}</strong>${parents.length ? `<span class="with">${esc(w.withParents(names(parents, lang)))}</span>` : ""}</span>
+            </div>
+            ${e.note ? `<p class="note">${esc(e.note[lang])}</p>` : ""}
+            ${tips.length ? `<div class="good"><div class="good-label">${w.good}</div><ul>${tips.map(t => `<li>${esc(t)}</li>`).join("")}</ul></div>` : ""}
+          </article>`;
+      }
+      box.innerHTML = html;
+    }
+
+    document.querySelectorAll(".lang button").forEach(b =>
+      b.addEventListener("click", () => { saveLang(b.dataset.lang); render(b.dataset.lang); })
+    );
+    render(pickLang());
+  </script>
+</body>
+</html>
